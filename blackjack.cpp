@@ -2,11 +2,7 @@
 #include <signal.h>
 #include <bits/stdc++.h>
 #include <locale.h>
-#include <cstdio>
-#include <iostream>
-#include <cmath>
-#include <cstdlib>
-#include <string>
+#include <vector>
 
 #define RED_CARD 1
 #undef KEY_ENTER
@@ -20,11 +16,18 @@ struct Card{
     bool red;
 };
 
-const std::ostringstream sstream;
+struct Player{
+    std::vector<Card> playerCards;
+    int score;
+    char* gameState;
+    bool playing;
+};
+
+std::vector<Player> players;
 bool playing = false;
 int height, width;
-std::vector<Card> playerCards;
-int playerScore = 0;
+int playerCount = 1;
+int playerPlaying = 0;
 std::vector<Card> dealerCards;
 int dealerScore = 0;
 
@@ -48,15 +51,30 @@ const std::vector<Card> deck = {
 void playGame();
 void endGame();
 void replayGame();
+void hit(int);
 void clearInput(int&);
-void hit();
 int getNewCard(std::vector<Card>&);
 void sizeChangehandler(int);
 void updateScreen();
-void showScore(int, int);
+void showScore(int, int, int);
 void showCard(Card);
+bool startsWith(const char*, const char*);
 
 int main(int argc, char *argv[]){
+
+    // Get player count
+    for (int i = 1; i < argc-1; i++){
+        if(startsWith(argv[i], "-p")){
+            playerCount = atoi(argv[i+1]);
+            if(playerCount < 0 || playerCount > 5){
+                std::cout << "Enter a player count between 1 and 5 \n";
+                return 1;
+            }
+            break;
+        }
+    }
+    players.resize(playerCount, {{}, 0, const_cast<char*>(""), true});
+
     // Initialize all the necessities
     initscr();
     setlocale(LC_ALL, "");
@@ -81,41 +99,52 @@ void playGame(){
 
     // Create a new deck and deal to cards to the dealer and player
     currentDeck = deck;
-    playerScore = 0;
-    playerCards = {};
-    for(int i = 0; i<2; i++) hit();
+    playerPlaying = 0;
+    for(int i = 0; i < playerCount; i++){
+        players[i].playerCards = {};   
+        players[i].score = 0;
+        players[i].gameState = const_cast<char*>("");
+        players[i].playing = true;
+        for(int j = 0; j<2; j++) hit(i);
+    }
     dealerScore = 0;
     dealerCards = {};
     for(int i = 0; i<2; i++) dealerScore += getNewCard(dealerCards);
+
     updateScreen();
     int x = 0;
 
     // Main game loop that handles all inputs
-    while(playing){
-        int input = getch();
-        if(input == KEY_ESCAPE){
-            endwin();
-            exit(0);
-        }
-        if(input == KEY_BACKSPACE){
-            if(x>0) x--;
-            move(height - 1, x);
-            delch();
-        }
-        else if(input == KEY_ENTER){
-            int choice = mvinch(height - 1, 0);
-            clearInput(x);
-            if(choice == *"s" || choice == *"S") endGame();
-            else if(choice == *"h" || choice == *"H"){
-                hit();
-            }
+    while(playerPlaying < playerCount){
+        while(players[playerPlaying].playing){
             updateScreen();
+            int input = getch();
+            if(input == KEY_ESCAPE){
+                endwin();
+                exit(0);
+            }
+            if(input == KEY_BACKSPACE){
+                if(x>0) x--;
+                move(height - 1, x);
+                delch();
+            }
+            else if(input == KEY_ENTER){
+                int choice = mvinch(height - 1, 0);
+                clearInput(x);
+                if(choice == *"s" || choice == *"S") players[playerPlaying].playing = false;
+                else if(choice == *"h" || choice == *"H"){
+                    hit(playerPlaying);
+                }
+            }
+            else x++;
         }
-        else x++;
+        playerPlaying++;
     }
 
+    endGame();
     replayGame();
 }
+
 
 // Called when the game ends
 // Checks whether or nor the player wins
@@ -134,13 +163,23 @@ void endGame(){
             }
         }
         if(dealerScore > 21){
-            mvprintw(height*0.5, width*0.5-7, "The dealer busted!");
+            for(int i = 0; i<playerCount; i++){
+                if(!strcmp(players[i].gameState, "")) players[i].gameState = const_cast<char*>("The dealer busted!");;
+            }
             return;
         }
     }
 
-    if(dealerScore >= playerScore) mvprintw(height*0.5, width*0.5-6, "The dealer wins!");
-    else mvprintw(height*0.5, width*0.5-3, "You win!");
+    for(int i = 0; i<playerCount; i++){
+        if(!strcmp(players[i].gameState, "")){
+            if(players[i].score <= dealerScore){
+                players[i].gameState = const_cast<char*>("The dealer wins!");
+            }
+            else players[i].gameState = const_cast<char*>("    You win!    ");
+        }
+    }
+
+    updateScreen();
 }
 
 // Called after the game finishes
@@ -165,7 +204,7 @@ void replayGame(){
                 playGame();
                 break;
             }
-            else if(choice == *"n" || choice == *"Y"){
+            else if(choice == *"n" || choice == *"N"){
                 endwin();
                 exit(0);
             }
@@ -174,42 +213,42 @@ void replayGame(){
     }
 }
 
-// Deletes user input
-void clearInput(int& x){
-    for(int i = x; i>=0; i--){
-            move(height - 1, i);
-            delch();
-        }
-    x = 0;
-}
-
 // Called when the player asks for a hit 
 // Gives the player a new card and checks whether he busts
-void hit(){
-    playerScore += getNewCard(playerCards);
-    if(playerScore > 21){
+void hit(int i){
+    players[i].score += getNewCard(players[i].playerCards);
+    if(players[i].score > 21){
         bool bust = true;
-        for (Card& card: playerCards){
+        for (Card& card: players[i].playerCards){
             if(card.score == 11){
                 card.score = 1;
-                playerScore -= 10;
+                players[i].score -= 10;
                 bust = false;
                 break;
             }
         }
         if(bust){
-            mvprintw(height*0.5, width*0.5-2, "Bust!");
-            playing = false;
+            players[i].gameState = const_cast<char*>("     Bust!      ");
+            players[i].playing = false;
         }
     }
 
-    if(playerScore == 21){
-        mvprintw(height*0.5, width*0.5-5, "Blackjack!");
-        playing = false;
+    if(players[i].score == 21){
+        players[i].gameState = const_cast<char*>("   Blackjack!   ");
+        players[i].playing = false;
     }
 }
 
-// Gives a new card to either the player or dealer.
+// Deletes user input
+void clearInput(int& x){
+    for(int i = x; i>=0; i--){
+        move(height - 1, i);
+        delch();
+    }
+    x = 0;
+}
+
+// Gives a new card to either the players or dealer.
 int getNewCard(std::vector<Card>& cards){
     int pickedCard = rand() % currentDeck.size();
     cards.push_back(currentDeck[pickedCard]);
@@ -239,8 +278,8 @@ void updateScreen(){
     int dealerDisplayScore = 0;
     int dealerCardsPos = widthMid-ceil(dealerCards.size()*1.5);
     if(dealerCardsPos < 0) dealerCardsPos = 0;
-    int playerCardsPos = widthMid-ceil(playerCards.size()*1.5);
-    if(playerCardsPos < 0) playerCardsPos = 0;
+    int playerDistance = ceil(width/(playerCount+1));
+    if(playerDistance < 1) playerDistance = 1;
 
     // Show the dealer cards and score
     move(2, dealerCardsPos);
@@ -250,16 +289,19 @@ void updateScreen(){
         dealerDisplayScore += dealerCards[i].score;
         showCard(dealerCards[i]);
     }
-    showScore(dealerDisplayScore, 1);
+    showScore(dealerDisplayScore, 1, widthMid);
 
-    // Show the player cards and score
-    move(height - 3, playerCardsPos);
-    addch(*"|");
-    for (Card& card: playerCards) showCard(card);
-    showScore(playerScore, height - 2);
+    // Show the players cards and scores
+    for(int i = 0; i<playerCount; i++){
+        move(height - 4, playerDistance*(i+1) - players[i].playerCards.size()*1.5f - 1);
+        addch(*"|");
+        for (Card& card: players[i].playerCards) showCard(card);
+        showScore(players[i].score, height - 3, playerDistance*(i+1));
+        mvprintw(height - 5, playerDistance*(i+1) - 8, "%s", players[i].gameState);
+    }
 
     // Asks for user input
-    if(playing) mvprintw(height - 2, 0, "(S)tay or (H)it");
+    if(playing) mvprintw(height - 2, 0, "Player %d (S)tay or (H)it", playerPlaying+1);
     else mvprintw(height - 2, 0, "Play again? (Y)es or (N)o");
     move(height - 1, 0);
 
@@ -267,11 +309,11 @@ void updateScreen(){
 }
 
 // Shows the score of either the dealer or the player
-void showScore(int score, int posY){
+void showScore(int score, int posY, int posX){
     std::string display = std::to_string(score) + "/21";
     char* charArray = new char[display.length() + 1];
     strcpy(charArray, display.c_str());
-    mvprintw(posY, width - 1 - display.length(), "%s", charArray);
+    mvprintw(posY, posX - display.length()*0.5f, "%s", charArray);
     free(charArray);
 }
 
@@ -287,4 +329,8 @@ void showCard(Card card){
     free(charArray);
     attroff(COLOR_PAIR(RED_CARD));
     addch(*"|");
+}
+
+bool startsWith(const char *a, const char *b){
+   return !strncmp(a, b, strlen(b));
 }
