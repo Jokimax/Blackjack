@@ -164,9 +164,8 @@ void endGame(){
         }
         if(dealerScore > 21){
             for(int i = 0; i<playerCount; i++){
-                if(!strcmp(players[i].gameState, "")) players[i].gameState = const_cast<char*>("The dealer busted!");;
+                if(!strcmp(players[i].gameState, "")) players[i].gameState = const_cast<char*>("The dealer busted!");
             }
-            return;
         }
     }
 
